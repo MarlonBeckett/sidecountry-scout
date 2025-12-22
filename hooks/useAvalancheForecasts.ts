@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { WeatherData } from '@/types/weather';
 
 export interface ForecastData {
   id: string;
@@ -26,6 +27,33 @@ export interface ForecastData {
     type: string;
     coordinates: number[][][];
   };
+  // Product API fields
+  bottomLine?: string;
+  hazardDiscussion?: string;
+  weatherDiscussion?: string;
+  media?: Array<{
+    id: string;
+    url: string;
+    caption: string;
+    sizes: {
+      large: string;
+      medium: string;
+      thumbnail: string;
+      original: string;
+    };
+  }>;
+  avalancheProblems?: Array<{
+    name: string;
+    likelihood: string;
+    minSize: string;
+    maxSize: string;
+    discussion: string;
+    location: string[];
+    aspectElevation: any;
+  }>;
+  dangerRose?: Array<any>;
+  hasFullForecast?: boolean;
+  weather?: WeatherData;
 }
 
 export interface ForecastsResponse {

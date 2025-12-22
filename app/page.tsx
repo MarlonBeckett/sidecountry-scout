@@ -8,6 +8,8 @@ import { useAvalancheForecasts, getUniqueCenters, getDangerLevelInfo } from '@/h
 import { useBriefing } from '@/hooks/useBriefing';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useWeather, getCenterCoordinates } from '@/hooks/useWeather';
+import { WeatherCard } from '@/components/WeatherCard';
 
 export default function BriefingPage() {
   const router = useRouter();
@@ -133,6 +135,21 @@ export default function BriefingPage() {
     currentSelectedCenter?.id || null,
     selectedZone
   );
+
+  // Get coordinates from the first forecast in the selected zone
+  const forecastCoordinates = useMemo(() => {
+    if (centerForecasts.length === 0) return null;
+    return getCenterCoordinates(centerForecasts[0].geometry);
+  }, [centerForecasts]);
+
+  // Fetch weather data
+  const { weather, loading: weatherLoading, error: weatherError } = useWeather({
+    latitude: forecastCoordinates?.latitude,
+    longitude: forecastCoordinates?.longitude,
+    center: currentSelectedCenter?.id,
+    zone: selectedZone || undefined,
+    enabled: !!forecastCoordinates && !!currentSelectedCenter && !!selectedZone,
+  });
 
   // Debug logging
   useEffect(() => {
@@ -309,6 +326,13 @@ export default function BriefingPage() {
             </div>
           </div>
         </section>
+
+        {/* Weather Section */}
+        {weather && currentSelectedCenter && selectedZone && (
+          <section className="opacity-0 animate-fade-in-up delay-250">
+            <WeatherCard weather={weather} />
+          </section>
+        )}
 
         {/* The Details Section */}
         <section className="opacity-0 animate-fade-in-up delay-300">
