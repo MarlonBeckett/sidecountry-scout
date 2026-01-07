@@ -6,10 +6,14 @@ import { createClient } from '@supabase/supabase-js';
 const genAI = new GoogleGenerativeAI(process.env.google_gemini_api || '');
 
 // Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nycbrohrtvteopadoyct.supabase.co',
-  process.env.NEXT_SECRET_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://nycbrohrtvteopadoyct.supabase.co';
+const supabaseKey = process.env.NEXT_SECRET_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseKey) {
+  throw new Error('Missing Supabase credentials. Please set NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_SECRET_SERVICE_ROLE_KEY');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface GenerateBriefingRequest {
   center: string;
@@ -67,10 +71,18 @@ export async function POST(request: Request) {
       .single();
 
     if (existingBriefing) {
+      // Data Staleness Check: Add warning flag if data is >24 hours old
+      const briefingAge = Date.now() - new Date(existingBriefing.created_at).getTime();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      const isStale = briefingAge > TWENTY_FOUR_HOURS;
+
       return NextResponse.json({
         success: true,
         briefing: existingBriefing,
-        cached: true
+        cached: true,
+        staleData: isStale,
+        dataAge: briefingAge,
+        stalenessWarning: isStale ? 'This forecast data is more than 24 hours old. It may not reflect current conditions. This is the most recent data available for this zone.' : null
       });
     }
 
@@ -188,6 +200,7 @@ async function generateAndStoreBriefing(
     media?: any[];
     has_product_data?: boolean;
     geometry?: any;
+    published_time?: string | null;
   }
 ) {
   // Fetch weather data if geometry is available
@@ -235,6 +248,15 @@ async function generateAndStoreBriefing(
     return `${DANGER_LEVELS[level.toString() as keyof typeof DANGER_LEVELS]} (${level}/5)`;
   };
 
+  // Check forecast age for staleness warning
+  let forecastAgeHours = 0;
+  let isStale = false;
+  if (forecastData.published_time) {
+    const publishedTime = new Date(forecastData.published_time);
+    forecastAgeHours = (Date.now() - publishedTime.getTime()) / (1000 * 60 * 60);
+    isStale = forecastAgeHours > 24;
+  }
+
   // Build enhanced prompt with Product API data
   let promptContext = `**Location:** ${zone}, ${center}
 **Overall Danger Level:** ${getDangerText(forecastData.danger_overall)}
@@ -244,6 +266,13 @@ async function generateAndStoreBriefing(
 - Below Treeline: ${getDangerText(forecastData.danger_low)}
 **Official Travel Advice:** ${forecastData.travel_advice || 'No specific advice provided'}`;
 
+  // Add data freshness information
+  if (isStale) {
+    promptContext += `\n\n**⚠️ DATA STALENESS WARNING:**
+This forecast data is ${Math.round(forecastAgeHours)} hours old (published: ${forecastData.published_time}).
+This is the most recent data available for this zone, but conditions may have changed.`;
+  }
+
   // Add weather data if available
   if (weatherData) {
     promptContext += '\n\n--- WEATHER DATA ---\n';
@@ -252,7 +281,7 @@ async function generateAndStoreBriefing(
     // Open-Meteo returns data with past days first, then current, then future
     // Daily array: [day-14, day-13, ..., day-1, today, tomorrow, ..., day+7]
     // So we need to find "today" in the array
-    const todayIndex = weatherData.daily.time.findIndex(date => {
+    const todayIndex = weatherData.daily.time.findIndex((date: string) => {
       const dataDate = new Date(date).toISOString().split('T')[0];
       const today = new Date().toISOString().split('T')[0];
       return dataDate === today;
@@ -265,15 +294,15 @@ async function generateAndStoreBriefing(
       const past14DaysTemp = weatherData.daily.temperatureMax.slice(Math.max(0, todayIndex - 14), todayIndex);
       const past14DaysWind = weatherData.daily.windGustsMax.slice(Math.max(0, todayIndex - 14), todayIndex);
 
-      const totalSnow14d = past14DaysSnow.reduce((a, b) => a + b, 0);
+      const totalSnow14d = past14DaysSnow.reduce((a: number, b: number) => a + b, 0);
       const maxWind14d = Math.max(...past14DaysWind);
-      const avgTemp14d = past14DaysTemp.reduce((a, b) => a + b, 0) / past14DaysTemp.length;
+      const avgTemp14d = past14DaysTemp.reduce((a: number, b: number) => a + b, 0) / past14DaysTemp.length;
 
       promptContext += `**Past 14 Days (Recent Weather History):**
 - Total snowfall: ${totalSnow14d.toFixed(1)}"
 - Average high temperature: ${Math.round(avgTemp14d)}°F
 - Max wind gusts: ${Math.round(maxWind14d)} mph
-- Snow days: ${past14DaysSnow.filter(s => s > 0.5).length} days with >0.5" snow
+- Snow days: ${past14DaysSnow.filter((s: number) => s > 0.5).length} days with >0.5" snow
 
 **Day-by-day recent history:**`;
 
@@ -308,7 +337,7 @@ async function generateAndStoreBriefing(
 **Next 24 Hours Trends:**`;
 
     // Find current hour index in hourly data
-    const currentHourIndex = weatherData.hourly.time.findIndex(time => {
+    const currentHourIndex = weatherData.hourly.time.findIndex((time: string) => {
       return new Date(time) >= new Date();
     });
 
@@ -319,7 +348,7 @@ async function generateAndStoreBriefing(
       const windTrend = weatherData.hourly.windSpeed.slice(currentHourIndex, currentHourIndex + 24);
       const precipProb = weatherData.hourly.precipitationProbability.slice(currentHourIndex, currentHourIndex + 24);
 
-      const totalSnow24h = snowTrend.reduce((a, b) => a + b, 0);
+      const totalSnow24h = snowTrend.reduce((a: number, b: number) => a + b, 0);
       const maxWind24h = Math.max(...windTrend);
       const minTemp24h = Math.min(...tempTrend);
       const maxTemp24h = Math.max(...tempTrend);
@@ -373,7 +402,13 @@ async function generateAndStoreBriefing(
     }
   }
 
-  const prompt = `You are a backcountry avalanche safety expert who teaches recreational skiers and snowboarders about avalanche conditions in a clear, educational way.
+  const prompt = `You are "The Pocket Mentor" - an educational avalanche safety assistant designed as a DECISION SUPPORT TOOL, not a decision maker.
+
+CRITICAL ROLE DEFINITION:
+- You are a professional librarian and educator, NOT an authoritative guide
+- You summarize and cite official forecasts, you do NOT make go/no-go decisions
+- You teach users to interpret data, you do NOT tell them what to do
+- You are a tool for learning, NOT a replacement for professional judgment
 
 Create a briefing for the following avalanche forecast:
 
@@ -381,31 +416,62 @@ ${promptContext}
 
 Your response must be valid JSON in this exact format:
 {
-  "briefing": "2-3 paragraph briefing text here",
+  "briefing": "2-3 paragraph briefing text here with inline citations${isStale ? '. START with a staleness warning acknowledging the data age.' : ''}",
+  "sourceUrl": "${forecastData.forecast_url || 'https://avalanche.org'}",
+  "sourceCenter": "${center}",
+  "disclaimer": "This briefing is an educational summary only${isStale ? ' based on data that is ' + Math.round(forecastAgeHours) + ' hours old' : ''}. It is not a substitute for reading the full official forecast, checking current conditions in the field, or making your own risk assessment. You are responsible for your own decisions in avalanche terrain.${isStale ? ' Conditions may have changed since this forecast was published.' : ''}",
   "problems": [
     {
       "name": "Problem name (e.g., Wind Slabs, Persistent Slab, Wet Snow)",
-      "description": "1-2 paragraph educational explanation of this problem. Explain what it is, why it's happening, what terrain to avoid, and what signs to look for. Use analogies and simple language.",
+      "description": "1-2 paragraph educational explanation WITH CITATIONS to official forecast",
       "likelihood": "Possible/Likely/Very Likely/Almost Certain",
-      "size": "Small/Medium/Large/Very Large"
+      "size": "Small/Medium/Large/Very Large",
+      "officialSource": true
     }
+  ],
+  "fieldObservationPrompts": [
+    "What did you observe during your approach? (roller balls, shooting cracks, whumpfing)",
+    "What were the results of your stability tests? (hand shear, compression test, etc.)",
+    "Have you seen any recent avalanche activity in this area?"
   ]
 }
 
+MANDATORY "POCKET MENTOR" RULES:
+
+1. **THE ANCHOR RULE - EVERY statement must cite the source:**
+   - Use inline citations: "[Official Forecast: ${center}]" after summarizing forecast data
+   - Use weather citations: "[Weather Data: Open-Meteo]" after weather observations
+   - NEVER make claims without attribution
+   - Example: "The primary concern is Wind Slab on N-NE-E aspects near treeline [Official Forecast: ${center}]."
+
+2. **VOICE & TONE - Professional Librarian:**
+   - AVOID: "You should...", "It is safe to...", "I recommend...", "Go ahead and..."
+   - USE: "The forecast indicates...", "The data shows...", "Forecasters have identified...", "Users often consider..."
+   - Be educational and observational, NEVER authoritative or directive
+
+3. **NEVER MAKE GO/NO-GO DECISIONS:**
+   - WRONG: "The South Face is safe today"
+   - RIGHT: "The forecast identifies Moderate danger on south aspects due to warming temperatures. Have you observed any roller balls or pinwheels during your approach? [Official Forecast: ${center}]"
+
+4. **TEACH, DON'T TELL:**
+   - Explain WHY conditions exist (past weather → current snowpack structure)
+   - Connect historical weather to current avalanche problems
+   - Help users understand what to look for, not what to decide
+
 For the briefing field:
-1. Explain what the danger level means in practical terms (what can you do safely?)
-2. Teach WHY these conditions exist (weather patterns, snowpack structure, etc.)
-3. **CRITICAL: Analyze the past 14 days of weather history to understand HOW the current snowpack was built**
-   - Recent storm cycles and snow loading patterns
-   - Wind events that created wind slabs or loaded specific aspects
-   - Temperature trends that created crusts, faceting, or wet snow problems
-   - The sequence of weather events that created the current hazard
-4. Explain the relationship between PAST weather and CURRENT avalanche problems (this is key!)
-5. Connect current conditions and near-term forecast to the existing snowpack structure
-6. Provide actionable terrain selection advice based on avalanche forecast, weather history, and current conditions
-7. Use analogies or simple explanations to help beginners understand
-8. If official forecast data is provided above, USE IT as your primary source of information
-9. Synthesize the official bottom line, hazard discussion, weather discussion, historical weather, and current conditions into accessible language
+1. Open with the official danger rating and what it represents: "The official forecast shows [DANGER LEVEL] for this zone [Official Forecast: ${center}]..."
+2. **Cite the official bottom line verbatim if available** - this is the forecaster's expert summary
+3. Analyze the past 14 days: "Weather data shows [specific patterns] [Weather Data: Open-Meteo], which has created..."
+4. Connect past weather to current snowpack problems: "These conditions have resulted in..."
+5. Summarize what forecasters are concerned about (cite official hazard discussion)
+6. Provide educational terrain guidance: "The forecast suggests avoiding [terrain types]. Signs to watch for include..."
+7. End with field observation prompts: "Before making decisions, consider checking for..."
+
+For the problems array:
+- **If official avalanche problems exist, USE THOSE EXCLUSIVELY**
+- Mark each problem with "officialSource": true when from the forecast
+- Translate technical language to beginner-friendly terms WHILE maintaining citation
+- Include specific warning signs users should look for in the field
 
 Weather-specific guidance to include when historical/current weather data is available:
 **Historical Weather (Past 14 days) - THIS IS CRITICAL:**
@@ -456,6 +522,15 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.`;
     throw new Error('AI returned invalid JSON format');
   }
 
+  // Validate required liability fields
+  if (!briefingData.disclaimer || !briefingData.sourceUrl) {
+    console.error('AI response missing required liability fields');
+    throw new Error('AI generated incomplete response - missing disclaimer or sources');
+  }
+
+  // Calculate forecast age for response metadata (isStale already calculated earlier)
+  const forecastAge = forecastAgeHours * 60 * 60 * 1000; // Convert hours to milliseconds
+
   // Store in Supabase
   const { data: newBriefing, error: insertError } = await supabase
     .from('avalanche_briefings')
@@ -465,7 +540,11 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.`;
       forecast_date: today,
       danger_level: forecastData.danger_overall,
       briefing_text: briefingData.briefing,
-      problems: briefingData.problems
+      problems: briefingData.problems,
+      source_url: briefingData.sourceUrl,
+      disclaimer: briefingData.disclaimer,
+      field_observation_prompts: briefingData.fieldObservationPrompts || [],
+      forecast_url: forecastData.forecast_url
     })
     .select()
     .single();
@@ -478,6 +557,9 @@ IMPORTANT: Return ONLY valid JSON, no additional text before or after.`;
   return NextResponse.json({
     success: true,
     briefing: newBriefing,
-    cached: false
+    cached: false,
+    staleData: isStale,
+    dataAge: forecastAge,
+    stalenessWarning: isStale ? 'This forecast data is more than 24 hours old. It may not reflect current conditions. This is the most recent data available for this zone.' : null
   });
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import LayoutWrapper from "@/components/LayoutWrapper";
 
 export const metadata: Metadata = {
   title: "Sidecountry Scout",
@@ -14,9 +15,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-background-light dark:bg-background-dark min-h-screen text-slate-900 dark:text-white font-body overflow-x-hidden selection:bg-primary selection:text-black topo-pattern grain-overlay">
+      <body className="bg-background text-foreground min-h-screen overflow-x-hidden antialiased">
         <AuthProvider>
-          {children}
+          <LayoutWrapper>
+            {children}
+          </LayoutWrapper>
         </AuthProvider>
       </body>
     </html>
