@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
-import LayoutWrapper from "@/components/LayoutWrapper";
+import LayoutWrapper from "@/components/navigation/LayoutWrapper";
 
 export const metadata: Metadata = {
   title: "Sidecountry Scout",

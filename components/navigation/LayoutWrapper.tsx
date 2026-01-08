@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import DesktopSidebar from '@/components/DesktopSidebar'
+import DesktopSidebar from '@/components/navigation/DesktopSidebar'
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

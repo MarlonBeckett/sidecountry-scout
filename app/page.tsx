@@ -1,6 +1,6 @@
 'use client';
 
-import LocationSelectorSheet from '@/components/LocationSelectorSheet';
+import LocationSelectorSheet from '@/components/location/LocationSelectorSheet';
 import { Lightbulb, ChevronDown, Sparkles, MapPin } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAvalancheForecasts, getUniqueCenters, getDangerLevelInfo } from '@/hooks/useAvalancheForecasts';
@@ -8,7 +8,7 @@ import { useBriefing } from '@/hooks/useBriefing';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useWeather, getCenterCoordinates } from '@/hooks/useWeather';
-import { WeatherCard } from '@/components/WeatherCard';
+import { WeatherCard } from '@/components/weather/WeatherCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -18,7 +18,6 @@ export default function BriefingPage() {
   const { user, loading: authLoading } = useAuth();
   const [selectedCenter, setSelectedCenter] = useState<{ id: string; name: string; state: string; zoneCount: number; zones?: string[] } | null>(null);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
-  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   const { data, loading, error } = useAvalancheForecasts();
 
@@ -64,38 +63,13 @@ export default function BriefingPage() {
         }
       } catch (error) {
         console.error('Error loading preferences:', error);
-      } finally {
-        setPreferencesLoaded(true);
       }
     };
 
     loadPreferences();
   }, [user, centers]);
 
-  useEffect(() => {
-    if (!preferencesLoaded || !user) return;
-
-    const savePreferences = async () => {
-      try {
-        await fetch('/api/preferences', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: user.id,
-            selectedCenter: selectedCenter?.id || null,
-            selectedZone: selectedZone || null,
-          }),
-        });
-      } catch (error) {
-        console.error('Error saving preferences:', error);
-      }
-    };
-
-    savePreferences();
-  }, [selectedCenter, selectedZone, preferencesLoaded, user]);
-
+  
   const centerForecasts = useMemo(() => {
     if (!data?.forecasts || !selectedCenter) return [];
     let forecasts = data.forecasts.filter(f => f.center === selectedCenter.id);
@@ -160,7 +134,7 @@ export default function BriefingPage() {
 
   return (
     <div className="min-h-screen p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -192,7 +166,7 @@ export default function BriefingPage() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - AI Briefing */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className={`space-y-6 ${weather && selectedCenter && selectedZone ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-3">

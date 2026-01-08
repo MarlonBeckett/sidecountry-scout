@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { WeatherData, WeatherApiResponse } from '@/types/weather';
+import { WeatherData } from '@/types/weather';
+import { WeatherApiResponse } from '@/types/api';
 
 interface UseWeatherOptions {
   latitude?: number;

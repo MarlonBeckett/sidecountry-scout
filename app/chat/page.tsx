@@ -1,14 +1,19 @@
 'use client';
 
-import { Send, Plus, Trash2 } from 'lucide-react';
+import { Send, Plus, Trash2, History } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,6 +39,7 @@ export default function ChatPage() {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatHistory[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,11 +128,13 @@ export default function ChatPage() {
     setMessages(chat.messages);
     setSelectedCenter(chat.center);
     setSelectedZone(chat.zone);
+    setHistoryOpen(false);
   };
 
   const startNewChat = () => {
     setCurrentChatId(null);
     setMessages([]);
+    setHistoryOpen(false);
   };
 
   const deleteChat = async (chatId: string) => {
@@ -201,21 +209,28 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-4rem)]">
-          {/* Sidebar - Chat History */}
-          <div className="lg:col-span-1">
-            <Card className="h-full flex flex-col">
-              <div className="p-4 border-b">
-                <Button onClick={startNewChat} className="w-full" variant="outline">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Chat
-                </Button>
-              </div>
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-2">
-                  {chatHistory.map((chat) => (
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-4xl mx-auto h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)]">
+        {/* History Sheet */}
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent side="left" className="w-80 p-0 flex flex-col">
+            <SheetHeader className="p-4 border-b">
+              <SheetTitle>Chat History</SheetTitle>
+            </SheetHeader>
+            <div className="p-4 border-b">
+              <Button onClick={startNewChat} className="w-full" variant="outline">
+                <Plus className="w-4 h-4 mr-2" />
+                New Chat
+              </Button>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="p-4 space-y-2">
+                {chatHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    No chat history yet
+                  </p>
+                ) : (
+                  chatHistory.map((chat) => (
                     <div
                       key={chat.id}
                       className={`group relative p-3 rounded-lg cursor-pointer transition-colors ${
@@ -243,135 +258,145 @@ export default function ChatPage() {
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </Card>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+
+        {/* Main Chat Card */}
+        <Card className="h-full flex flex-col">
+          {/* Header */}
+          <div className="p-4 border-b">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setHistoryOpen(true)}
+                className="shrink-0"
+              >
+                <History className="w-5 h-5" />
+              </Button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl font-bold">Scout AI</h1>
+                <p className="text-sm text-muted-foreground truncate">
+                  {selectedZone && selectedCenter ? selectedZone : 'No location selected'}
+                </p>
+              </div>
+              <Button onClick={startNewChat} variant="outline" size="sm" className="shrink-0">
+                <Plus className="w-4 h-4 mr-2" />
+                New
+              </Button>
+            </div>
           </div>
 
-          {/* Main Chat Area */}
-          <div className="lg:col-span-3">
-            <Card className="h-full flex flex-col">
-              {/* Header */}
-              <div className="p-4 border-b">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold">Scout AI</h1>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedZone && selectedCenter ? `${selectedZone}` : 'No location selected'}
-                    </p>
+          {/* Messages */}
+          <ScrollArea className="flex-1 p-4 md:p-6">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                <div className="mb-8">
+                  <div className="w-16 h-16 rounded-full bg-muted mb-4 mx-auto flex items-center justify-center">
+                    <Send className="w-8 h-8 text-muted-foreground" />
                   </div>
+                  <h2 className="text-xl font-semibold mb-2">Start a conversation</h2>
+                  <p className="text-muted-foreground max-w-md">
+                    Ask about terrain, weather conditions, or avalanche safety protocols.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 text-left justify-start"
+                    onClick={() => sendMessage('Is the trees off Lincoln safe?')}
+                  >
+                    <div>
+                      <p className="font-medium">Terrain Safety</p>
+                      <p className="text-sm text-muted-foreground">Is the trees off Lincoln safe?</p>
+                    </div>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 text-left justify-start"
+                    onClick={() => sendMessage('Show me the wind forecast')}
+                  >
+                    <div>
+                      <p className="font-medium">Weather Forecast</p>
+                      <p className="text-sm text-muted-foreground">Show me the wind forecast</p>
+                    </div>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 text-left justify-start"
+                    onClick={() => sendMessage("Explain 'Persistent Slab'")}
+                  >
+                    <div>
+                      <p className="font-medium">Avalanche Education</p>
+                      <p className="text-sm text-muted-foreground">Explain &apos;Persistent Slab&apos;</p>
+                    </div>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-auto py-4 px-6 text-left justify-start"
+                    onClick={() => sendMessage('What are current conditions?')}
+                  >
+                    <div>
+                      <p className="font-medium">Current Conditions</p>
+                      <p className="text-sm text-muted-foreground">What are current conditions?</p>
+                    </div>
+                  </Button>
                 </div>
               </div>
-
-              {/* Messages */}
-              <ScrollArea className="flex-1 p-6">
-                {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <div className="mb-8">
-                      <div className="w-16 h-16 rounded-full bg-muted mb-4 mx-auto flex items-center justify-center">
-                        <Send className="w-8 h-8 text-muted-foreground" />
-                      </div>
-                      <h2 className="text-xl font-semibold mb-2">Start a conversation</h2>
-                      <p className="text-muted-foreground max-w-md">
-                        Ask about terrain, weather conditions, or avalanche safety protocols.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl">
-                      <Button
-                        variant="outline"
-                        className="h-auto py-4 px-6 text-left justify-start"
-                        onClick={() => sendMessage('Is the trees off Lincoln safe?')}
-                      >
-                        <div>
-                          <p className="font-medium">Terrain Safety</p>
-                          <p className="text-sm text-muted-foreground">Is the trees off Lincoln safe?</p>
-                        </div>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-auto py-4 px-6 text-left justify-start"
-                        onClick={() => sendMessage('Show me the wind forecast')}
-                      >
-                        <div>
-                          <p className="font-medium">Weather Forecast</p>
-                          <p className="text-sm text-muted-foreground">Show me the wind forecast</p>
-                        </div>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-auto py-4 px-6 text-left justify-start"
-                        onClick={() => sendMessage("Explain 'Persistent Slab'")}
-                      >
-                        <div>
-                          <p className="font-medium">Avalanche Education</p>
-                          <p className="text-sm text-muted-foreground">Explain &apos;Persistent Slab&apos;</p>
-                        </div>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-auto py-4 px-6 text-left justify-start"
-                        onClick={() => sendMessage('What are current conditions?')}
-                      >
-                        <div>
-                          <p className="font-medium">Current Conditions</p>
-                          <p className="text-sm text-muted-foreground">What are current conditions?</p>
-                        </div>
-                      </Button>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] md:max-w-[80%] rounded-lg px-4 py-3 ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                            message.role === 'user'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
-                          }`}
-                        >
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                        </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse"></div>
+                        <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse delay-75"></div>
+                        <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse delay-150"></div>
                       </div>
-                    ))}
-                    {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="bg-muted rounded-lg px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse"></div>
-                            <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse delay-75"></div>
-                            <div className="w-2 h-2 rounded-full bg-foreground/40 animate-pulse delay-150"></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
+                    </div>
                   </div>
                 )}
-              </ScrollArea>
-
-              {/* Input */}
-              <div className="p-4 border-t">
-                <form onSubmit={handleSubmit} className="flex gap-2">
-                  <Input
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Message Scout..."
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button type="submit" disabled={!inputValue.trim() || isLoading}>
-                    <Send className="w-4 h-4" />
-                  </Button>
-                </form>
+                <div ref={messagesEndRef} />
               </div>
-            </Card>
+            )}
+          </ScrollArea>
+
+          {/* Input */}
+          <div className="p-4 border-t">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Message Scout..."
+                disabled={isLoading}
+                className="flex-1"
+              />
+              <Button type="submit" disabled={!inputValue.trim() || isLoading}>
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

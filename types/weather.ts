@@ -45,10 +45,3 @@ export interface WeatherData {
   };
   lastUpdated: string;
 }
-
-export interface WeatherApiResponse {
-  success: boolean;
-  weather?: WeatherData;
-  cached?: boolean;
-  error?: string;
-}

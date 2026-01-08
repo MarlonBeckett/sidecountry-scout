@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getCenterId } from '@/lib/avalancheCenterMapping';
+import { getCenterId } from '@/lib/utils/center-mapping';
 
 // Initialize Supabase client
 const supabase = createClient(
